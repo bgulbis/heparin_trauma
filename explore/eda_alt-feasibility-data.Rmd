@@ -1,0 +1,135 @@
+---
+title: "Heparin in Trauma Patients"
+subtitle: "Exploratory Analysis"
+author: "Brian Gulbis"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output: 
+  html_document:
+    code_folding: hide
+    fig_caption: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+```{r}
+library(tidyverse)
+library(plotly)
+library(broom)
+
+x <- dirr::get_rds("../data/tidy/mpp")
+```
+
+```{r, fig.cap="PTT values over the first 72 hours on heparin drip by age"}
+data_ptt %>%
+    left_join(data_patients, by = "millennium.id") %>%
+    arrange(millennium.id, lab.datetime) %>%
+    # mutate(
+    #     age.grp = case_when(
+    #         age >= 80 ~ "80+",
+    #         age >= 70 ~ "70-79",
+    #         age >= 60 ~ "60-69",
+    #         age >= 50 ~ "50-59",
+    #         TRUE ~ "<50"
+    #     )
+    # ) %>%
+    filter(time.hr <= 72) %>%
+    plot_ly() %>%
+    add_markers(x = ~time.hr, y = ~lab.result, color = ~age)
+```
+
+```{r, fig.cap="Relationship between age and PTT values during the first 72 hours on heparin drip"}
+df <- data_ptt %>%
+    left_join(data_patients, by = "millennium.id") %>%
+    filter(time.hr <= 72) 
+
+mod <- lm(lab.result ~ age, data = df)
+
+df %>%
+    plot_ly(x = ~age) %>%
+    add_markers(y = ~lab.result, alpha = 0.6) %>%
+    add_lines(y = fitted(mod)) %>%
+    add_ribbons(
+        data = augment(mod),
+        ymin = ~.fitted - 1.96 * .se.fit,
+        ymax = ~.fitted + 1.96 * .se.fit,
+        line = list(color = 'rgba(7, 164, 181, 0.05)'),
+        fillcolor = 'rgba(7, 164, 181, 0.2)'
+    ) %>%
+    layout(showlegend = FALSE)
+```
+
+```{r, fig.cap="Percent of patients with a PTT >90 in the first 72 hours on heparin drip"}
+df_high <- data_ptt %>%
+    left_join(data_patients, by = "millennium.id") %>%
+    filter(time.hr <= 72) %>%
+    mutate(ptt.90 = lab.result > 90) %>%
+    filter(!is.na(ptt.90)) %>%
+    # mutate_at("ptt.90", factor) %>%
+    arrange(millennium.id, desc(ptt.90)) %>%
+    distinct(millennium.id, ptt.90, age) 
+
+df_high %>%
+    count(ptt.90) %>%
+    mutate(pct = n / nrow(df_high) * 100) %>%
+    plot_ly() %>%
+    add_bars(x = ~ptt.90, y = ~pct)
+```
+
+```{r, fig.cap="Distribution of patients with a PTT >90 by age"}
+df_high %>%
+    plot_ly(alpha = 0.6) %>%
+    add_histogram(
+        x = ~age, 
+        color = ~ptt.90, 
+        histnorm = "percent",
+        autobinx = FALSE,
+        xbins = list(start = 20, end = 100, size = 5)) %>%
+    layout(barmode = "overlay")
+```
+
+```{r, fig.cap="Relationship between the time to first therapeutic PTT and age"}
+data_ptt %>%
+    arrange(millennium.id, lab.datetime) %>%
+    group_by(millennium.id) %>%
+    filter(
+        # time.hr <= 72,
+        lab.result >= 60,
+        lab.result <= 90
+    ) %>%
+    distinct(millennium.id, .keep_all = TRUE) %>%
+    left_join(data_patients, by = "millennium.id") %>%
+    plot_ly() %>%
+    add_markers(x = ~time.hr, y = ~age)
+```
+
+```{r eval=FALSE}
+data_heparin %>%
+    filter(drip.count == 1) %>%
+    left_join(data_patients, by = "millennium.id") %>%
+    plot_ly() %>%
+    add_markers(x = ~first.rate, y = ~age)
+```
+
+```{r, fig.cap="Relationship between age and heparin rate"}
+df_rate <- data_rates %>%
+    # filter(med.rate > 0) %>%
+    left_join(data_patients, by = "millennium.id") 
+
+mod_rate <- lm(med.rate ~ age, data = df_rate)
+
+df_rate %>%
+    plot_ly(x = ~age) %>%
+    add_markers(y = ~med.rate, alpha = 0.6) %>%
+    add_lines(y = fitted(mod_rate)) %>%
+    add_ribbons(
+        data = augment(mod_rate),
+        ymin = ~.fitted - 1.96 * .se.fit,
+        ymax = ~.fitted + 1.96 * .se.fit,
+        line = list(color = 'rgba(7, 164, 181, 0.05)'),
+        fillcolor = 'rgba(7, 164, 181, 0.2)'
+    ) %>%
+    layout(showlegend = FALSE)
+```
+
