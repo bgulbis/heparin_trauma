@@ -42,21 +42,28 @@ include <- drips %>%
 data_bolus <- drips %>%
     filter(is.na(event.tag))
 
-labs <- read_data(dir_raw, "labs", FALSE) %>%
-    as.labs() %>%
-    tidy_data() %>%
-    semi_join(include, by = "millennium.id")
-
 heparin <- drips %>%
     semi_join(include, by = "millennium.id") %>%
     calc_runtime() %>%
     summarize_data()
 
-first_rate <- drips %>%
+hep_12hr <- heparin %>%
+    filter(duration >= 12)
+
+data_patients <- pts %>%
     semi_join(include, by = "millennium.id") %>%
+    semi_join(hep_12hr, by = "millennium.id")
+    
+first_rate <- drips %>%
+    semi_join(data_patients, by = "millennium.id") %>%
     arrange(millennium.id, med.datetime) %>%
     filter(!is.na(med.rate.units)) %>%
     distinct(millennium.id, .keep_all = TRUE)
+
+labs <- read_data(dir_raw, "labs", FALSE) %>%
+    as.labs() %>%
+    tidy_data() %>%
+    semi_join(data_patients, by = "millennium.id")
 
 data_ptt <- labs %>%
     filter(lab == "ptt") %>%
@@ -71,14 +78,15 @@ data_ptt <- labs %>%
     mutate(time.hr = difftime(lab.datetime, start.datetime, units = "hours"))
 
 data_rates <- drips %>%
-    semi_join(include, by = "millennium.id") %>%
+    semi_join(data_patients, by = "millennium.id") %>%
     filter(!is.na(med.rate.units))
 
 data_heparin <- data_rates %>%
     calc_runtime() %>%
     summarize_data()
 
-data_patients <- pts %>%
-    semi_join(include, by = "millennium.id")
+data_ptt_high <- data_ptt %>%
+    calc_runtime() %>%
+    calc_perctime("lab.result > 90")
 
 dirr::save_rds("data/tidy/mpp", "data_")
