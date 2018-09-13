@@ -1,0 +1,149 @@
+---
+title: "Heparin in Trauma Patients"
+subtitle: "Exploratory Analysis"
+author: "Brian Gulbis"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output:
+  tufte::tufte_handout:
+    latex_engine: xelatex
+link-citations: yes
+---
+
+```{r setup, include=FALSE}
+library(tufte)
+# invalidate cache when the tufte version changes
+knitr::opts_chunk$set(
+    tidy = FALSE, 
+    echo = FALSE, 
+    message = FALSE, 
+    warning = FALSE, 
+    cache.extra = packageVersion('tufte'), 
+    kable.force.latex = TRUE
+)
+
+options(htmltools.dir.version = FALSE)
+```
+
+```{r}
+library(tidyverse)
+library(themebg)
+library(broom)
+
+x <- dirr::get_rds("../data/tidy/mpp")
+```
+
+The data set includes `r nrow(data_patients)` patients who were started on a heparin drip using the DVT/PE protocol from June to August 2018.
+
+```{r, fig.cap="PTT values over the first 72 hours on heparin drip by age. The color of the point corresponds to the age of the patient. The PTT values for patients of across ages appear to be similar."}
+data_ptt %>%
+    left_join(data_patients, by = "millennium.id") %>%
+    arrange(millennium.id, lab.datetime) %>%
+    filter(time.hr <= 72) %>%
+    mutate_at("time.hr", as.numeric) %>%
+    ggplot(aes(x = time.hr, y = lab.result, color = age)) +
+    geom_point() +
+    scale_x_continuous("Time (hours)", breaks = seq(0, 72, 24)) +
+    ylab("PTT (secs)") +
+    theme_bg()
+```
+
+```{r, fig.cap="Relationship between age and PTT values during the first 72 hours on heparin drip. There is a slight trend towards higher PTT values in older patients, but the values would still mostly be within the therapeutic range."}
+data_ptt %>%
+    left_join(data_patients, by = "millennium.id") %>%
+    filter(time.hr <= 72) %>%
+    ggplot(aes(x = age, y = lab.result)) +
+    geom_point(alpha = 0.6) +
+    geom_smooth(method = "lm") +
+    scale_x_continuous("Age (years)", breaks = seq(0, 100, 10)) +
+    scale_y_continuous("PTT (secs)", breaks = seq(0, 160, 20)) +
+    theme_bg()
+
+```
+
+```{r, fig.cap="Percent of patients with any PTT value above 90 in the first 72 hours on heparin drip"}
+df_high <- data_ptt %>%
+    left_join(data_patients, by = "millennium.id") %>%
+    filter(time.hr <= 72) %>%
+    mutate(ptt.90 = lab.result > 90) %>%
+    filter(!is.na(ptt.90)) %>%
+    # mutate_at("ptt.90", factor) %>%
+    arrange(millennium.id, desc(ptt.90)) %>%
+    distinct(millennium.id, ptt.90, age) 
+
+df_high %>%
+    count(ptt.90) %>%
+    mutate(pct = n / nrow(df_high) * 100) %>%
+    ggplot(aes(x = ptt.90, y = pct)) +
+    geom_bar(stat = "identity") +
+    xlab("Any PTT above 90 secs") +
+    scale_y_continuous("Patients (%)", breaks = seq(0, 100, 10)) +
+    theme_bg()
+```
+
+```{r, fig.cap="Distribution of ages among patients with a PTT above 90. There appears to be both younger and older patients who experienced a PTT above 90."}
+df_high %>%
+    filter(ptt.90) %>%
+    ggplot(aes(x = age)) +
+    # geom_freqpoly(binwidth = 5) +
+    # stat_bin(aes(y = ..density..), binwidth = 5, position = "identity", alpha = 0.6) +
+    geom_histogram(binwidth = 5) +
+    scale_x_continuous("Age (years)", breaks = seq(0, 100, 10)) +
+    ylab("Patients (n)") +
+    # facet_wrap(~ ptt.90) +
+    theme_bg()
+```
+
+```{r, fig.cap="Relationship between the time to first therapeutic PTT and age. The majority of patients reached their first therapeutic PTT within 12 hours of heparin initiation."}
+data_ptt %>%
+    arrange(millennium.id, lab.datetime) %>%
+    group_by(millennium.id) %>%
+    filter(
+        # time.hr <= 72,
+        lab.result >= 60,
+        lab.result <= 90
+    ) %>%
+    distinct(millennium.id, .keep_all = TRUE) %>%
+    left_join(data_patients, by = "millennium.id") %>%
+    mutate_at("time.hr", as.numeric) %>%
+    ggplot(aes(x = time.hr, y = age)) +
+    geom_point() +
+    scale_x_continuous("Time (hours)", breaks = seq(0, 72, 12)) +
+    scale_y_continuous("Age (years)", breaks = seq(0, 100, 10)) +
+    theme_bg()
+
+```
+
+```{r eval=FALSE}
+data_heparin %>%
+    filter(drip.count == 1) %>%
+    left_join(data_patients, by = "millennium.id") %>%
+    plot_ly() %>%
+    add_markers(x = ~first.rate, y = ~age)
+```
+
+```{r, fig.cap="Relationship between age and heparin rate. There is a clear trend towards older patients requiring a lower heparin rate, though this still appears to be in the 14-18 unit/kg/hr range."}
+data_rates %>%
+    left_join(data_patients, by = "millennium.id") %>%
+    ggplot(aes(x = age, y = med.rate)) +
+    geom_point(alpha = 0.6) +
+    geom_smooth(method = "lm") +
+    scale_x_continuous("Age (years)", breaks = seq(0, 100, 10)) +
+    ylab("Heparin Rate (units/kg/hour)") +
+    theme_bg()
+
+```
+
+```{r, fig.cap="Relationship between age and the percent of time spent with a PTT above 90. There was no increase in amount of time a patient was supratherapeutic across age ranges."}
+data_ptt_high %>%
+    left_join(data_patients, by = "millennium.id") %>%
+    mutate_at("perc.time", as.numeric) %>%
+    mutate_at("perc.time", funs(. * 100)) %>%
+    ggplot(aes(x = age, y = perc.time)) +
+    geom_point() +
+    geom_smooth(method = "lm") +
+    scale_x_continuous("Age (years)", breaks = seq(0, 100, 10)) +
+    ylab("Time (%)") +
+    theme_bg()
+
+```
+
