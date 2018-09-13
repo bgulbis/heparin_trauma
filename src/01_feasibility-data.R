@@ -24,7 +24,12 @@ mbo_id <- concat_encounters(pts$millennium.id)
 
 drips <- read_data(dir_raw, "meds-inpt", FALSE) %>%
     as.meds_inpt() %>%
-    filter(!is.na(event.tag))
+    filter(
+        route != "SUB-Q",
+        med.location == "HH STIC"
+    ) %>%
+    # filter(!is.na(event.tag)) %>%
+    arrange(millennium.id, med.datetime)
 
 fixed <- drips %>%
     filter(med.rate.units == "unit/hr") %>%
@@ -34,30 +39,44 @@ include <- drips %>%
     distinct(millennium.id) %>%
     anti_join(fixed, by = "millennium.id")
 
+data_bolus <- drips %>%
+    filter(is.na(event.tag))
+
 labs <- read_data(dir_raw, "labs", FALSE) %>%
     as.labs() %>%
     tidy_data() %>%
     semi_join(include, by = "millennium.id")
 
-data_heparin <- drips %>%
+heparin <- drips %>%
     semi_join(include, by = "millennium.id") %>%
     calc_runtime() %>%
     summarize_data()
 
+first_rate <- drips %>%
+    semi_join(include, by = "millennium.id") %>%
+    arrange(millennium.id, med.datetime) %>%
+    filter(!is.na(med.rate.units)) %>%
+    distinct(millennium.id, .keep_all = TRUE)
+
 data_ptt <- labs %>%
     filter(lab == "ptt") %>%
     left_join(
-        data_heparin[c("millennium.id", "start.datetime", "stop.datetime")],
+        heparin[c("millennium.id", "start.datetime", "stop.datetime")],
         by = "millennium.id"
     ) %>%
     filter(
         lab.datetime >= start.datetime,
         lab.datetime <= stop.datetime
-    )
+    ) %>%
+    mutate(time.hr = difftime(lab.datetime, start.datetime, units = "hours"))
 
 data_rates <- drips %>%
     semi_join(include, by = "millennium.id") %>%
     filter(!is.na(med.rate.units))
+
+data_heparin <- data_rates %>%
+    calc_runtime() %>%
+    summarize_data()
 
 data_patients <- pts %>%
     semi_join(include, by = "millennium.id")

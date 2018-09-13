@@ -1,5 +1,6 @@
 ---
-title: "Heparin in Trauma Patients - Exploratory Analysis"
+title: "Heparin in Trauma Patients"
+subtitle: "Exploratory Analysis"
 author: "Brian Gulbis"
 date: '`r format(Sys.Date(), "%B %d, %Y")`'
 output: 
@@ -9,14 +10,14 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 ```
 
 ```{r}
 library(tidyverse)
 library(plotly)
 
-dirr::get_rds("../data/tidy")
+x <- dirr::get_rds("../data/tidy")
 ```
 
 ```{r}
@@ -24,7 +25,6 @@ data_ptt %>%
     left_join(data_patients, by = "millennium.id") %>%
     arrange(millennium.id, lab.datetime) %>%
     mutate(
-        time.hr = difftime(lab.datetime, start.datetime, units = "hours"),
         age.grp = case_when(
             age >= 80 ~ "80+",
             age >= 70 ~ "70-79",
@@ -41,7 +41,6 @@ data_ptt %>%
 ```{r}
 data_ptt %>%
     left_join(data_patients, by = "millennium.id") %>%
-    mutate(time.hr = difftime(lab.datetime, start.datetime, units = "hours")) %>%
     filter(time.hr <= 72) %>%
     plot_ly() %>%
     add_markers(x = ~age, y = ~lab.result)
@@ -50,7 +49,6 @@ data_ptt %>%
 ```{r}
 data_ptt %>%
     left_join(data_patients, by = "millennium.id") %>%
-    mutate(time.hr = difftime(lab.datetime, start.datetime, units = "hours")) %>%
     filter(time.hr <= 72) %>%
     mutate(ptt.90 = lab.result > 90) %>%
     filter(!is.na(ptt.90)) %>%
@@ -69,7 +67,6 @@ data_ptt %>%
 
 ```{r}
 data_ptt %>%
-    mutate(time.hr = difftime(lab.datetime, start.datetime, units = "hours")) %>%
     arrange(millennium.id, lab.datetime) %>%
     group_by(millennium.id) %>%
     filter(
@@ -81,5 +78,13 @@ data_ptt %>%
     left_join(data_patients, by = "millennium.id") %>%
     plot_ly() %>%
     add_markers(x = ~time.hr, y = ~age)
+```
+
+```{r}
+data_heparin %>%
+    filter(drip.count == 1) %>%
+    left_join(data_patients, by = "millennium.id") %>%
+    plot_ly() %>%
+    add_markers(x = ~first.rate, y = ~age)
 ```
 
